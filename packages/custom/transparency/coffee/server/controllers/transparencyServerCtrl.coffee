@@ -16,6 +16,11 @@ Transfer = mongoose.model 'Transfer'
 Organisation = mongoose.model 'Organisation'
 
 regex = /"?(.+?)"?;(\d{4})(\d);(\d{1,2});\d;"?(.+?)"?;(\d+(?:,\d{1,2})?).*/
+#Search for organisation entry in database
+findOrganisationData = (organisation) ->
+    #console.log "search for organisation with name " + organisation
+    queryPromise = Organisation.findOne({ 'name': organisation }, 'name street zipCode city_de country_de -_id').exec()
+    queryPromise
 
 #Transfer of line to Organisation
 lineToOrganisation = (line, numberOfOrganisations) ->
@@ -44,7 +49,20 @@ lineToTransfer = (line, feedback) ->
         transfer.media = m[5].replace('""','"').replace(/http:\/\//i,'').replace('www.','').replace(/([\w\.-]+(?:\.at|\.com))/,(m)->m.toLowerCase())
         transfer.period = parseInt(m[2] + m[3])
         transfer.amount = parseFloat m[6].replace ',', '.'
-        transfer.save()
+        #Save reference
+        transferReference = findOrganisationData transfer.organisation
+        Q.all(transferReference)
+        .then (results) ->
+            try
+                if results.name
+                    transfer.organisation_street = results.street
+                    transfer.organisation_zipCode = results.zipCode
+                    transfer.organisation_city_de = results.city_de
+                    transfer.organisation_country_de = results.country_de
+                transfer.save()
+            catch error
+                console.log error
+
         feedback.quarter = transfer.quarter
         feedback.year = transfer.year
         feedback.entries++
@@ -185,6 +203,10 @@ module.exports = (Transparency) ->
                 _id:
                     organisation: "$organisation"
                     transferType: "$transferType"
+                    organisation_street: "$organisation_street"
+                    organisation_zipCode: "$organisation_zipCode"
+                    organisation_city_de: "$organisation_city_de"
+                    organisation_country_de: "$organisation_country_de"
                     media: "$media"
                 amount:
                     $sum: "$amount"
@@ -193,6 +215,10 @@ module.exports = (Transparency) ->
             .project(
                     organisation: "$_id.organisation"
                     transferType: "$_id.transferType",
+                    organisation_street: "$_id.organisation_street",
+                    organisation_zipCode: "$_id.organisation_zipCode",
+                    organisation_city_de: "$_id.organisation_city_de",
+                    organisation_country_de: "$_id.organisation_country_de",
                     media: "$_id.media"
                     _id: 0
                     amount: 1)

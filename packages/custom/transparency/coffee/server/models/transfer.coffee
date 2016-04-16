@@ -10,6 +10,22 @@ TransferSchema = new Schema
         type: String
         required: true
         trim: true
+    organisation_street:
+        type: String
+        required: true
+        trim: true
+    organisation_zipCode:
+        type: String
+        required: true
+        trim: true
+    organisation_city_de:
+        type: String
+        required: true
+        trim: true
+    organisation_country_de:
+        type: String
+        required: true
+        trim: true
     transferType: Number
     media:
         type: String
@@ -44,7 +60,7 @@ try
     m = mongoose.model 'Transfer'
 
 catch err
-    console.log "Transfer Model #{m}"
+    console.log "Transfer Model #{err}"
     mongoose.model 'Transfer', TransferSchema
 
 
