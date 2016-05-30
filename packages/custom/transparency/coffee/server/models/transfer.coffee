@@ -26,6 +26,10 @@ TransferSchema = new Schema
         type: String
         required: true
         trim: true
+    organisation_federalState_de:
+        type: String
+        required: true
+        trim: true
     transferType: Number
     media:
         type: String

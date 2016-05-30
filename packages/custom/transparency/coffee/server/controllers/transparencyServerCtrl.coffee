@@ -17,10 +17,15 @@ Organisation = mongoose.model 'Organisation'
 ZipCode = mongoose.model 'Zipcode'
 
 regex = /"?(.+?)"?;(\d{4})(\d);(\d{1,2});\d;"?(.+?)"?;(\d+(?:,\d{1,2})?).*/
+
+findFederalState = (zip) ->
+    queryPromise = ZipCode.findOne({'zipCode': zip}, 'federalState -_id').exec()
+    queryPromise
+
 #Search for organisation entry in database
 findOrganisationData = (organisation) ->
     #console.log "search for organisation with name " + organisation
-    queryPromise = Organisation.findOne({ 'name': organisation }, 'name street zipCode city_de country_de -_id').exec()
+    queryPromise = Organisation.findOne({ 'name': organisation }, 'name street zipCode city_de country_de federalState_de -_id').exec()
     queryPromise
 
 #Transfer of line to ZipCode
@@ -40,14 +45,22 @@ lineToOrganisation = (line, numberOfOrganisations) ->
     splittedLine = line.split(";")
     #Skip first and last lines
     if splittedLine[0] != 'Bezeichnung des Rechtsträgers' and splittedLine[0] != ''
+        numberOfOrganisations++
         organisation = new Organisation()
         organisation.name = splittedLine[0]
         organisation.street = splittedLine[1]
         organisation.zipCode = splittedLine[2]
         organisation.city_de = splittedLine[3]
         organisation.country_de = splittedLine[4]
-        organisation.save()
-        numberOfOrganisations++
+        federalStateResult = findFederalState organisation.zipCode
+        Q.all(federalStateResult)
+        .then (result) ->
+            try
+                if result.federalState
+                    organisation.federalState_de = result.federalState
+                    organisation.save()
+            catch error
+                console.log error
     numberOfOrganisations
 
 lineToTransfer = (line, feedback) ->
@@ -72,6 +85,7 @@ lineToTransfer = (line, feedback) ->
                     transfer.organisation_zipCode = results.zipCode
                     transfer.organisation_city_de = results.city_de
                     transfer.organisation_country_de = results.country_de
+                    transfer.organisation_federalState_de = results.federalState_de
                 transfer.save()
             catch error
                 console.log error
@@ -205,6 +219,7 @@ module.exports = (Transparency) ->
     flows: (req, res) ->
         try
             maxLength = parseInt req.query.maxLength or "750"
+            federalState = req.query.federalState or ''
             period = {}
             period['$gte'] = parseInt(req.query.from) if req.query.from
             period['$lte'] = parseInt(req.query.to) if req.query.to
@@ -225,6 +240,8 @@ module.exports = (Transparency) ->
                     {organisation: { $regex: ".*#{filter}.*", $options: "i"}}
                     {media: { $regex: ".*#{filter}.*", $options: "i"}}
                 ]
+            if federalState
+                query.organisation_federalState_de = federalState
             group =
                 _id:
                     organisation: "$organisation"
@@ -233,6 +250,7 @@ module.exports = (Transparency) ->
                     organisation_zipCode: "$organisation_zipCode"
                     organisation_city_de: "$organisation_city_de"
                     organisation_country_de: "$organisation_country_de"
+                    organisation_federalState_de: "$organisation_federalState_de"
                     media: "$media"
                 amount:
                     $sum: "$amount"
@@ -245,6 +263,7 @@ module.exports = (Transparency) ->
                     organisation_zipCode: "$_id.organisation_zipCode",
                     organisation_city_de: "$_id.organisation_city_de",
                     organisation_country_de: "$_id.organisation_country_de",
+                    organisation_federalState_de: "$_id.organisation_federalState_de",
                     media: "$_id.media"
                     _id: 0
                     amount: 1)
@@ -252,7 +271,7 @@ module.exports = (Transparency) ->
             .then (result) ->
                 if result.length > maxLength
                     res.status(413).send {
-                        error: "You query returns more then the specified maximum od #{maxLength}"
+                        error: "You query returns more then the specified maximum of #{maxLength}"
                         length: result.length
                     }
                 else
@@ -263,6 +282,7 @@ module.exports = (Transparency) ->
             res.status(500).send error: "Could not load money flow: #{error}"
 
     topEntries: (req, res) ->
+        federalState = req.query.federalState or ''
         period = {}
         period['$gte'] = parseInt(req.query.from) if req.query.from
         period['$lte'] = parseInt(req.query.to) if req.query.to
@@ -276,6 +296,10 @@ module.exports = (Transparency) ->
         query.transferType =
             $in: paymentTypes.map (e)->
                 parseInt(e)
+        if federalState
+            console.log federalState + ' selected'
+            query.organisation_federalState_de =
+                $in: [federalState]
         group =
             _id: {organisation: if orgType is 'org' then '$organisation' else '$media'}
             total:
